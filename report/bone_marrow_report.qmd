@@ -1,0 +1,41 @@
+---
+title: "Single-cell RNA Sequecing Basic Report"
+date: 08/14/2024
+date-format: long
+
+number-sections: true
+highlight-style: pygments
+format:
+  html:
+    toc: true
+    toc-title: Contents
+    #include-in-header:
+    #  - file: ./header_footer/header1.html
+    #include-after-body:
+    #  - file: ./header_footer/footer1.html
+    grid: 
+      body-width: 1200px
+      sidebar-width: 258px
+    code-fold: false
+editor: visual
+---
+# Data
+```{r}
+#| echo: false
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+```
+
+```{r}
+#| echo: false
+sce <- readRDS("/mnt/d12b/SINGLECELL/testdata/sce_bone_processed.rds")
+print(sce)
+```
+```{r}
+#unfiltered$discard <- qc$discard
+
+```
+# Quality Control
+```{r}
+```

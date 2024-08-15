@@ -36,7 +36,9 @@ sce.bone <- unfiltered <- addPerCellQC(sce.bone, BPPARAM=bpp,
 ## quick quality check
 qc <- quickPerCellQC(colData(sce.bone), batch=sce.bone$Donor,
     sub.fields="subsets_Mito_percent")
-qc
+df <- qc |> as.data.frame() |> colSums()
+saveRDS(df, file = paste0(data, "qc_metrics.rds"))
+
 ## Filter cell
 sce.bone <- sce.bone[,!qc$discard]
 unfiltered$discard <- qc$discard
@@ -206,3 +208,24 @@ p <- plotUMAP(sce.bone, colour_by="celltype", text_by="celltype")
 ggsave(file=paste0(figures,"UMAP_celltype.png"), p, width=1500, height=1500, unit="px")
 # Save processed data
 saveRDS(sce.bone, file=paste0(data, "sce_bone_processed_annotated.rds"))
+
+# Session info
+# Get the session information
+si <- sessionInfo()
+# Extract attached packages
+attached_pkgs <- si$otherPkgs
+# Function to extract package names and versions
+extract_pkg_info <- function(pkg_list) {
+  data.frame(
+    Tools = names(pkg_list),
+    Version = sapply(pkg_list, function(x) x$Version),
+    stringsAsFactors = FALSE
+  )
+}
+# Convert attached packages to dataframes
+attached_df <- extract_pkg_info(attached_pkgs)
+# Print the dataframe
+rownames(attached_df) <- NULL
+attached_df 
+## save session to file
+saveRDS(attached_df, file=paste0(data, "sessionInfo.rds"))

@@ -1,0 +1,341 @@
+---
+title: "Single-cell RNA Sequecing Basic Report"
+date: 08/14/2024
+date-format: long
+
+execute:
+  echo: false
+  warning: false
+number-sections: true
+highlight-style: pygments
+format:
+  html:
+    smooth-scroll: true
+    embed-resources: true
+    toc: true
+    toc-title: Contents
+    include-in-header:
+      - file: ./header_footer/header1.html
+    include-after-body:
+      - file: ./header_footer/footer1.html
+    grid:
+      body-width: 1200px
+      sidebar-width: 258px
+    code-fold: false
+editor: visual
+---
+# Data Description
+This is a subset of the Human Cell Atlas Bone Marrow Big Dataset, including 380,000 cells from 8 Donors. [DataSet](https://explore.data.humancellatlas.org/projects/cc95ff89-2e68-4a08-a234-480eca21ce79)
+```{r}
+#| echo: false
+#| warning: false
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(tidyverse)
+library(ggridges)
+library(DT)
+library(ggplot2)
+library(dplyr)
+library(reactable)
+```
+# Analysis Workflow
+The basic analysis workflow will follow these main steps:
+```{mermaid}
+flowchart TD
+    A((scRNA-seq Data)) --> B[Exploratory Data Analysis]
+    A --> C[Quality Control]
+    C --> D[Normalization]
+    B --> E[Feature Selection]
+    D --> E
+    E --> F[Dimensionality Reduction]
+    F --> G[Clustering]
+    G --> H[Automated Celltype Annotation]
+
+    %% Enhanced styling with lighter colors and distinct shapes
+    style A fill:#f0f0f0,stroke:#888,stroke-width:1px,stroke-dasharray: 5 5;
+    style B fill:#cfe,stroke:#888,stroke-width:1px;
+    style C fill:#cfe,stroke:#888,stroke-width:1px;
+    style D fill:#cfe,stroke:#888,stroke-width:1px;
+    style E fill:#e7f7ff,stroke:#888,stroke-width:1px;
+    style F fill:#e7f7ff,stroke:#888,stroke-width:1px;
+    style G fill:#e7f7ff,stroke:#888,stroke-width:1px;
+    style H fill:#f0f0f0,stroke:#888,stroke-width:1px,stroke-dasharray: 5 5;
+```
+# General Stats
+```{r}
+sce.bone <- readRDS("/mnt/d12b/SINGLECELL/testdata/sce_bone_processed_annotated.rds")
+df <- readRDS("/mnt/d12b/SINGLECELL/testdata/sce_bone_metadata.rds")
+df <- df |> 
+  group_by(Donor) |>
+  summarize(
+    nCell = n(),
+    mean_UMI = round(mean(nUMI, na.rm=TRUE),2),
+    mean_Gene = round(mean(nGene, na.rm=TRUE),2),
+    mean_Mito = round(mean(subsets_Mito_sum, na.rm=TRUE),2),
+    mean_Mito_percent = round(mean(subsets_Mito_percent, na.rm=TRUE),2)
+  )
+reactable(df)
+```
+
+::: {.callout-note}
+- `nCell`: Number of cell in each sample
+- `mean_UMI`: Mean of total UMI counts per sample
+- `mean_Gene`: Mean of the total genes detected per sample
+- `mean_Mito`: Mean of the UMI counts that belong to mitochondria gene per sample
+- `mean_Mito_percent`: Mean percentage of mitochondria UMI per sample
+:::
+
+# Metadata Exploration
+## Cell Counts
+```{r}
+df <- readRDS("/mnt/d12b/SINGLECELL/testdata/sce_bone_metadata.rds")
+df |>
+  # Transform data
+  group_by(Donor) |>
+  summarize(cell_count = n()) |> # Summarize the cell count for each sample
+  # Visualize
+  ggplot(aes(x = Donor, y = cell_count, fill = Donor)) +
+  geom_col(width = 0.7, show.legend = FALSE) + # Set bar width and hide legend
+  labs(
+    x = "Donor",
+    y = "Cell Count",
+    title = "Cell Count per Donor"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
+    axis.title.y = element_text(margin = margin(r = 10), face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12), # Rotate x-axis labels for better readability
+    panel.grid.major.x = element_blank(), # Remove vertical grid lines
+    panel.grid.minor = element_blank()
+  ) +
+  scale_fill_brewer(palette = "Set3") + # Use a qualitative color palette
+  geom_text(aes(label = cell_count), vjust = -0.5, size = 4) # Add text labels above bars
+```
+## Total UMIs and Genes Detected in each cell
+::: {.panel-tabset}
+## UMI
+```{r}
+df |> ggplot(aes(x = nUMI)) +
+  geom_density(fill = "#FF7F0E", color = "#D35400", alpha = 0.5, linewidth = 0.8) +
+  xlim(NA, 10000) +
+  labs(
+    x = "UMI Count",
+    y = "Density",
+    title = "Distribution of UMI Counts per Cell"
+  ) +
+  theme_minimal(base_size = 14) +  # Use a minimal theme with larger base font size
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center the plot title
+    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to the x-axis title
+    axis.title.y = element_text(margin = margin(r = 10))   # Add margin to the y-axis title
+  )
+```
+## Gene
+```{r}
+df |> ggplot(aes(x = nGene)) +
+  geom_density(fill = "#FF7F0E", color = "#D35400", alpha = 0.5, linewidth = 0.8) +
+  xlim(NA, 10000) +
+  labs(
+    x = "Gene Count",
+    y = "Density",
+    title = "Distribution of Gene detected per Cell"
+  ) +
+  theme_minimal(base_size = 14) +  # Use a minimal theme with larger base font size
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center the plot title
+    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to the x-axis title
+    axis.title.y = element_text(margin = margin(r = 10))   # Add margin to the y-axis title
+  )
+```
+:::
+
+## UMI and Gene Detected Per Sample
+::: {.panel-tabset}
+## UMI
+```{r}
+library(ggplot2)
+library(ggridges)
+
+# Create the plot
+df |> ggplot(aes(x = nUMI, y = Donor, fill = Donor, color = Donor)) +
+  geom_density_ridges(
+    alpha = 0.7,
+    size = 0.8,
+    scale = 0.9,
+    rel_min_height = 0.01,
+    show.legend = FALSE
+  ) +
+  xlim(NA, 10000) +
+  labs(
+    x = "UMI Count",
+    y = "Donor",
+    title = "Distribution of UMI Counts per Cell Across Donors"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    panel.grid.major = element_line(size = 0.5, linetype = 'dashed', color = '#eeeeee')
+  ) +
+  scale_fill_brewer(palette = "Set2") +  # Use a qualitative color palette
+  scale_color_brewer(palette = "Set2")
+```
+## Gene
+```{r}
+library(ggplot2)
+library(ggridges)
+
+# Create the plot
+df |> ggplot(aes(x = nGene, y = Donor, fill = Donor, color = Donor)) +
+  geom_density_ridges(
+    alpha = 0.7,
+    size = 0.8,
+    scale = 0.9,
+    rel_min_height = 0.01,
+    show.legend = FALSE
+  ) +
+  xlim(NA, 10000) +
+  labs(
+    x = "Gene detected",
+    y = "Donor",
+    title = "Distribution of Gene per Cell Across Donors"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    panel.grid.major = element_line(size = 0.5, linetype = 'dashed', color = '#eeeeee')
+  ) +
+  scale_fill_brewer(palette = "Set2") +  # Use a qualitative color palette
+  scale_color_brewer(palette = "Set2")
+```
+
+:::
+
+# Quality Control
+```{r}
+# Quality control
+## read unfiltered sce.bone object
+unfiltered <- readRDS("/mnt/d12b/SINGLECELL/testdata/sce_bone_unfiltered.rds")
+
+```
+## Per Cell Quality Checking
+This step uses the automated quality control function `quickPerCellQC`. It calculates median absolute deviation (MAD) thresholds to identify outliers in these metrics then flags those outliers for discarding process.
+
+::: {.panel-tabset}
+## Total Counts
+```{r}
+plotColData(unfiltered, x="Donor", y="sum", colour_by="discard") +
+        scale_y_log10() + ggtitle("Total counts") +
+                theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Detected Features
+```{r}
+plotColData(unfiltered, x="Donor", y="detected", colour_by="discard") +
+        scale_y_log10() + ggtitle("Detected features") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Mito percent
+```{r}
+plotColData(unfiltered, x="Donor", y="subsets_Mito_percent",
+        colour_by="discard") + ggtitle("Mito Percent") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+:::
+
+::: {.callout-note}
+- `Total Counts (Library size)`: Cells with a library size below a certain threshold (e.g., 3 MADs below the median) are flagged.
+- `Detected Feature (Genes)`: Cells with a low number of detected features (e.g., 3 MADs below the median) are flagged.
+- `Mito Percent (Mitochondria Percent)`: Cells with a high percentage of mitochondrial reads (e.g., 3 MADs above the median) are flagged.
+:::
+
+## Low Quality Cells Filtering
+These low-quality cells marked above will be discarded.
+```{r}
+qc <- readRDS("/mnt/d12b/SINGLECELL/testdata/qc_metrics.rds")
+qc <- qc |> as.data.frame()
+colnames(qc) <- "Cell_count"
+reactable(qc)
+```
+
+# Normalization
+This step leverage the function `logNormCounts` to normalizes the single-cell RNA-seq data by dividing each cell's counts by its total count (library size) and then applying a log-transformation. This process adjusts for differences in sequencing depth across cells and prepares the data for downstream analysis.
+
+# Feature Selection
+This code performs feature selection in single-cell RNA-seq analysis by identifying highly variable genes (HVGs). First, `modelGeneVarByPoisson` models the gene expression variance across cells, accounting for donor-specific effects to isolate biologically relevant variability. Then, `getTopHVGs` selects the top 5,000 most variable genes, which are likely to be biologically significant and are used in downstream analyses (clustering and dimensionality reduction).
+
+**Top 5000 HVGs**
+
+```{r}
+top.bone <- readRDS("/mnt/d12b/SINGLECELL/testdata/top5000_hvgs.rds")
+df <- top.bone |> as.data.frame() 
+colnames(df) <- "Gene"
+df <- df |> DT::datatable()
+df
+```
+# Clustering
+- This step first runs UMAP on the dataset using MNN-based dimensionality reduction and Annoy for efficient nearest neighbor calculations, optimized for large datasets.
+- Next, it performs two-step clustering: first applying K-means to create `1,000` initial clusters, then refining them with a nearest-neighbor graph using `k=5`.
+
+## Cluster Identification
+Here is the clustering result:
+```{r}
+df <- colData(sce.bone)$label |> table() |> as.data.frame() |> t() |> as.data.frame()
+colnames(df) <- df |> slice(1)
+df <- df |> slice(2)
+rownames(df) <- "nCell"
+df |> reactable()
+```
+## Similarity in sample clusters
+The distribution of cells across clusters and donors are show below, it provides a visual summary of how different donors contribute to each cluster.
+```{r}
+library(pheatmap)
+tab <- table(Cluster=colLabels(sce.bone), Donor=sce.bone$Donor)
+pheatmap(log10(tab+10), color=viridis::viridis(100))
+```
+
+## Cluster visualization with UMAP
+Visualize the clusters in UMAP plot.
+```{r}
+scrambled <- sample(ncol(sce.bone))
+```
+::: {.panel-tabset}
+## Cluster
+```{r}
+plotUMAP(sce.bone, colour_by="label", text_by="label")
+```
+## Scrambling
+```{r}
+plotUMAP(sce.bone[,scrambled], colour_by="Donor")
+```
+:::
+# Cell Type Annotation
+## Assigned Cell Type
+This step performs automated cell type classification using a reference dataset to annotate each cluster based on its pseudo-bulk profile.
+
+::: {.callout-note}
+**Reference dataset**: `HumanPrimaryCellAtlasData`
+This reference dataset provides normalized expression values for 713 microarray samples from the Human Primary Cell Atlas (HPCA) (Mabbott et al., 2013). These 713 samples were processed and normalized as described in Aran, Looney and Liu et al. (2019).
+:::
+
+```{r}
+df <- sce.bone$celltype |> table() |> as.data.frame()
+colnames(df) <- c("Celltype", "Count")
+reactable(df)
+```
+## UMAP visualization of Celltype
+Visualize the assigned cell-type in UMAP plot.
+```{r}
+plotUMAP(sce.bone, colour_by="celltype", text_by="celltype")
+```
+
+# Software Catalog
+```{r}
+tools <- readRDS("/mnt/d12b/SINGLECELL/testdata/sessionInfo.rds")
+tools |> DT::datatable()
+```
